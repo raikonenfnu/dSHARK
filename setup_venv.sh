@@ -29,6 +29,7 @@ if [[ -z "${CONDA_PREFIX}" ]]; then
   echo "Using pip venv.. Setting up venv dir: $VENV_DIR"
   $PYTHON -m venv "$VENV_DIR" || die "Could not create venv."
   source "$VENV_DIR/bin/activate" || die "Could not activate venv"
+  PYTHON="$(which python3)"
 else
   echo "Found conda env $CONDA_DEFAULT_ENV. Running pip install inside the conda env"
 fi
@@ -86,7 +87,7 @@ else
 fi
 if [[ -z "${USE_IREE}" ]]; then
   echo "Installing SHARK..."
-  $PYTHON -m pip install --find-links https://github.com/NodLabs/SHARK/releases iree-compiler iree-runtime
+  $PYTHON -m pip install --find-links https://github.com/NodLabs/SHARK-Runtime/releases iree-compiler iree-runtime
   if [ $? -eq 0 ];then
     echo "Successfully Installed SHARK Runtime"
   else
@@ -106,8 +107,8 @@ fi
 
 $PYTHON -m pip install transformers
 $PYTHON -m pip install git+https://github.com/pytorch/functorch.git
-$PYTHON -m pip wheel -v -w $TD/wheelhouse $TD -f https://github.com/NodLabs/SHARK/releases -f https://github.com/llvm/torch-mlir/releases --extra-index-url https://download.pytorch.org/whl/nightly/cpu
-$PYTHON -m pip install . --extra-index-url https://download.pytorch.org/whl/nightly/cpu -f https://github.com/llvm/torch-mlir/releases -f https://github.com/NodLabs/SHARK/releases
+$PYTHON -m pip wheel -v -w $TD/wheelhouse $TD -f https://github.com/NodLabs/SHARK-Runtime/releases -f https://github.com/llvm/torch-mlir/releases --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+$PYTHON -m pip install . --extra-index-url https://download.pytorch.org/whl/nightly/cpu -f https://github.com/llvm/torch-mlir/releases -f https://github.com/NodLabs/SHARK-Runtime/releases
 
 if [[ -z "${CONDA_PREFIX}" ]]; then
   echo "${Green}Before running examples activate venv with:"

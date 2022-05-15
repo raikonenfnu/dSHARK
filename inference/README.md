@@ -22,7 +22,7 @@ git submodule update --init
 update the submodules of iree
 
 ```
-cd thirdparty/iree
+cd thirdparty/SHARK-Runtime
 
 git submodule update --init
 ```
