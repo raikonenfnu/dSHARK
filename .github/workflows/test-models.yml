@@ -25,7 +25,7 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Setup pip cache
       uses: actions/cache@v3
       with:
@@ -52,8 +52,8 @@ jobs:
         cd $GITHUB_WORKSPACE
         IMPORTER=1 ./setup_venv.sh
         source shark.venv/bin/activate
-        pytest -k 'not benchmark' --ignore=tank/tf/ --ignore=shark/tests/test_shark_importer.py
-        
+        pytest -k 'not benchmark' --ignore=benchmarks/tests/test_hf_benchmark.py --ignore=shark/tests/test_shark_importer.py --ignore benchmarks/tests/test_benchmark.py --ignore=tank/tf/
+
   perf-macOS:
     runs-on: MacStudio
     strategy:
@@ -107,4 +107,4 @@ jobs:
         cd $GITHUB_WORKSPACE
         IMPORTER=1 ./setup_venv.sh
         source shark.venv/bin/activate
-        pytest -k 'not benchmark' --ignore=benchmarks/tests/test_hf_benchmark.py --ignore=shark/tests/test_shark_importer.py --ignore benchmarks/tests/test_benchmark.py --ignore=tank/tf/
+        pytest --ignore=tank/tf/ --ignore=shark/tests/test_shark_importer.py
