@@ -1,4 +1,3 @@
-from shark.shark_inference import SharkInference
 from shark.shark_importer import SharkImporter
 from shark.iree_utils._common import check_device_drivers
 from tank.model_utils import get_hf_model, compare_tensors
@@ -39,6 +38,7 @@ class MiniLMModuleTester:
         minilm_mlir, func_name = mlir_importer.import_mlir(
             is_dynamic=self.dynamic, tracing_required=True
         )
+        from shark.shark_inference import SharkInference
         shark_module = SharkInference(
             minilm_mlir, func_name, device="cpu", mlir_dialect="linalg"
         )

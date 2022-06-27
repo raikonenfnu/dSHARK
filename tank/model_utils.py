@@ -1,5 +1,3 @@
-from shark.shark_inference import SharkInference
-
 import torch
 import numpy as np
 import torchvision.models as models
