@@ -12,15 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from shark.iree_utils.compile_utils import (
-    get_iree_compiled_module,
-    get_results,
-    export_iree_module_to_vmfb,
-)
 from shark.iree_utils._common import check_device_drivers, device_driver_info
 import os
 import sys
-
 
 # supported dialects by the shark-runtime.
 supported_dialects = {"linalg", "mhlo", "tosa", "tf-lite"}
@@ -64,6 +58,13 @@ class SharkRunner:
         device: str = "cpu",
         mlir_dialect: str = "linalg",
     ):
+        from shark.iree_utils.compile_utils import (
+            get_iree_compiled_module,
+            get_results,
+            export_iree_module_to_vmfb,
+        )
+        self.export_iree_module_to_vmfb = export_iree_module_to_vmfb
+        self.get_results = get_results
         self.mlir_module = mlir_module
         self.function_name = function_name
         self.device = device
@@ -85,7 +86,7 @@ class SharkRunner:
         )
 
     def run(self, inputs: tuple):
-        return get_results(
+        return self.get_results(
             self.iree_compilation_module,
             inputs,
             self.iree_config,
@@ -95,7 +96,7 @@ class SharkRunner:
     # TODO: Instead of passing directory and having names decided by the module
     # , user may want to save the module with manual names.
     def save_module(self, dir=os.getcwd()):
-        return export_iree_module_to_vmfb(
+        return self.export_iree_module_to_vmfb(
             self.model, self.device, dir, self.mlir_dialect
         )
 
