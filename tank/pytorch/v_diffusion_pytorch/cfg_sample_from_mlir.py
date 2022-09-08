@@ -188,7 +188,7 @@ t_in = t[0] * ts
 mlir_model, func_name, inputs, golden_out = download_torch_model("v_diffusion")
 
 shark_module = SharkInference(
-    mlir_model, func_name, device="cpu", mlir_dialect="linalg"
+    mlir_model, func_name, device="intel-gpu", mlir_dialect="linalg"
 )
 shark_module.compile()
 

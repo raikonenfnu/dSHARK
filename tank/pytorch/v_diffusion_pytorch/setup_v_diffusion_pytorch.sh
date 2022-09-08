@@ -3,10 +3,6 @@ if [ -z "$PYTHON" ]; then
   PYTHON="$(which python3)"
 fi
 
-function die() {
-  echo "Error executing command: $*"
-  exit 1
-}
 
 PYTHON_VERSION_X_Y=`${PYTHON} -c 'import sys; version=sys.version_info[:2]; print("{0}.{1}".format(*version))'`
 

@@ -36,4 +36,6 @@ mlir_importer = SharkImporter(
 shark_module = SharkInference(vision_mlir, func_name, mlir_dialect="linalg")
 shark_module.compile()
 result = shark_module.forward((input,))
-np.testing.assert_allclose(golden_out, result, rtol=1e-02, atol=1e-03)
+print(result)
+print(golden_out)
+print(np.testing.assert_allclose(golden_out, result, rtol=1e-02, atol=1e-03))

@@ -48,6 +48,7 @@ class EagerModeIREELinalgOnTensorsBackend(TorchMLIREagerBackend):
 
     def __init__(self, device: str):
         self.torch_device_str = device
+        self.torch_device_str = "cpu"
         self.config = ireert.Config(IREE_DEVICE_MAP[device])
         self.raw_device_str = device
 
