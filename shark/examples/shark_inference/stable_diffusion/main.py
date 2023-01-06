@@ -41,6 +41,7 @@ if args.clear_all:
 from utils import set_init_device_flags
 
 from opt_params import get_unet, get_vae, get_clip
+from model_wrappers import get_unet_torch, get_clip_torch, get_vae_torch
 from schedulers import (
     SharkEulerDiscreteScheduler,
 )
@@ -99,10 +100,15 @@ if __name__ == "__main__":
     if batch_size != len(neg_prompt):
         sys.exit("prompts and negative prompts must be of same length")
 
-    set_init_device_flags()
+    # set_init_device_flags()
     clip = get_clip()
-    unet = get_unet()
-    vae = get_vae()
+    # unet = get_unet()
+    # clip = get_clip_torch()
+    print("getting unet")
+    unet = get_unet_torch()
+    print("getting done")
+    # import pdb; pdb.set_trace()
+    # vae = get_vae()
     if args.dump_isa:
         dump_isas(args.dispatch_benchmarks_dir)
 
@@ -147,12 +153,12 @@ if __name__ == "__main__":
         dtype=torch.float32,
     ).to(dtype)
     # Warmup phase to improve performance.
-    if args.warmup_count >= 1:
-        vae_warmup_input = torch.clone(latents).detach().numpy()
-        clip_warmup_input = torch.randint(1, 2, (2, args.max_length))
-    for i in range(args.warmup_count):
-        vae("forward", (vae_warmup_input,))
-        clip("forward", (clip_warmup_input,))
+    # if args.warmup_count >= 1:
+    #     vae_warmup_input = torch.clone(latents).detach().numpy()
+    #     clip_warmup_input = torch.randint(1, 2, (2, args.max_length))
+    # for i in range(args.warmup_count):
+    #     vae("forward", (vae_warmup_input,))
+    #     clip("forward", (clip_warmup_input,))
 
     start = time.time()
 
@@ -174,6 +180,7 @@ if __name__ == "__main__":
     text_input = torch.cat([uncond_input.input_ids, text_input.input_ids])
 
     clip_inf_start = time.time()
+    # text_embeddings = clip.forward(text_input).detach().numpy()
     text_embeddings = clip("forward", (text_input,))
     clip_inf_end = time.time()
     text_embeddings = torch.from_numpy(text_embeddings).to(dtype)
@@ -186,6 +193,8 @@ if __name__ == "__main__":
 
     avg_ms = 0
     for i, t in tqdm(enumerate(scheduler.timesteps), disable=args.hide_steps):
+        # print("iteation:",i)
+        torch.cuda.empty_cache()
         step_start = time.time()
         if not args.hide_steps:
             print(f"i = {i} t = {t}", end="")
@@ -195,22 +204,24 @@ if __name__ == "__main__":
             latent_model_input = latent_model_input.detach().numpy()
 
         profile_device = start_profiling(file_path="unet.rdc")
-
-        noise_pred = unet(
-            "forward",
-            (
-                latent_model_input,
-                timestep,
-                text_embeddings_numpy,
-                guidance_scale,
-            ),
-            send_to_host=False,
-        )
+        with torch.no_grad():
+            noise_pred = unet.forward(torch.from_numpy(latent_model_input).cuda(), torch.from_numpy(timestep).cuda(), text_embeddings.cuda(), guidance_scale.cuda())
+        # noise_pred = unet(
+        #     "forward",
+        #     (
+        #         latent_model_input,
+        #         timestep,
+        #         text_embeddings_numpy,
+        #         guidance_scale,
+        #     ),
+        #     send_to_host=False,
+        # )
 
         end_profiling(profile_device)
 
         if cpu_scheduling:
-            noise_pred = torch.from_numpy(noise_pred.to_host())
+            # noise_pred = torch.from_numpy(noise_pred.to_host())
+            noise_pred = noise_pred.to("cpu")
             latents = scheduler.step(noise_pred, t, latents).prev_sample
         else:
             latents = scheduler.step(noise_pred, t, latents)
@@ -219,7 +230,6 @@ if __name__ == "__main__":
         step_ms = int((step_time) * 1000)
         if not args.hide_steps:
             print(f" ({step_ms}ms)")
-
     # scale and decode the image latents with vae
     if args.use_base_vae:
         latents = 1 / 0.18215 * latents
@@ -228,7 +238,9 @@ if __name__ == "__main__":
         latents_numpy = latents.detach().numpy()
     profile_device = start_profiling(file_path="vae.rdc")
     vae_start = time.time()
-    images = vae("forward", (latents_numpy,))
+    vae = get_vae_torch()
+    images = vae.forward(latents.cuda()).cpu().detach().numpy()
+    # images = vae("forward", (latents_numpy,))
     vae_end = time.time()
     end_profiling(profile_device)
     if args.use_base_vae:

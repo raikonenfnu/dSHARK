@@ -67,6 +67,41 @@ model_revision = {
     "dreamlike": "main",
 }
 
+def get_clip_torch(model_name="clip_text", extra_args=[]):
+
+    text_encoder = CLIPTextModel.from_pretrained(
+        "openai/clip-vit-large-patch14"
+    )
+    if args.variant == "stablediffusion":
+        if args.version != "v1_4":
+            text_encoder = CLIPTextModel.from_pretrained(
+                model_config[args.version], subfolder="text_encoder"
+            )
+
+    elif args.variant in [
+        "anythingv3",
+        "analogdiffusion",
+        "openjourney",
+        "dreamlike",
+    ]:
+        text_encoder = CLIPTextModel.from_pretrained(
+            model_variant[args.variant],
+            subfolder="text_encoder",
+            revision=model_revision[args.variant],
+        )
+    else:
+        raise ValueError(f"{args.variant} not yet added")
+
+    class CLIPText(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.text_encoder = text_encoder
+
+        def forward(self, input):
+            return self.text_encoder(input)[0]
+
+    clip_model = CLIPText()
+    return clip_model
 
 def get_clip_mlir(model_name="clip_text", extra_args=[]):
 
@@ -163,6 +198,30 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
     )
     return shark_vae
 
+def get_vae_torch(model_name="vae", extra_args=[]):
+    class VaeModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.vae = AutoencoderKL.from_pretrained(
+                model_config[args.version]
+                if args.variant == "stablediffusion"
+                else model_variant[args.variant],
+                subfolder="vae",
+                revision=model_revision[args.variant],
+            )
+
+        def forward(self, input):
+            input = 1 / 0.18215 * input
+            x = self.vae.decode(input, return_dict=False)[0]
+            x = (x / 2 + 0.5).clamp(0, 1)
+            x = x * 255.0
+            return x.round()
+
+    vae = VaeModel().cuda()
+    if args.variant == "stablediffusion":
+        if args.precision == "fp16":
+            vae = vae.half()
+    return vae
 
 def get_vae_mlir(model_name="vae", extra_args=[]):
     class VaeModel(torch.nn.Module):
@@ -219,6 +278,36 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
     )
     return shark_vae
 
+def get_unet_torch():
+    class UnetModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.unet = UNet2DConditionModel.from_pretrained(
+                model_config[args.version]
+                if args.variant == "stablediffusion"
+                else model_variant[args.variant],
+                subfolder="unet",
+                revision=model_revision[args.variant],
+            )
+            self.in_channels = self.unet.in_channels
+            self.train(False)
+
+        def forward(self, latent, timestep, text_embedding, guidance_scale):
+            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+            latents = torch.cat([latent] * 2)
+            unet_out = self.unet.forward(
+                latents, timestep, text_embedding, return_dict=False
+            )[0]
+            noise_pred_uncond, noise_pred_text = unet_out.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (
+                noise_pred_text - noise_pred_uncond
+            )
+            return noise_pred
+    unet = UnetModel().cuda()
+    if args.variant == "stablediffusion":
+        if args.precision == "fp16":
+            unet = unet.half()
+    return unet
 
 def get_unet_mlir(model_name="unet", extra_args=[]):
     class UnetModel(torch.nn.Module):
