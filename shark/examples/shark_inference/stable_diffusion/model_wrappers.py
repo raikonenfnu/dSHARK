@@ -60,7 +60,7 @@ model_input = {
 
 # revision param for from_pretrained defaults to "main" => fp32
 model_revision = {
-    "stablediffusion": "fp16" if args.precision == "fp16" else "main",
+    "stablediffusion": "main",
     "anythingv3": "diffusers",
     "analogdiffusion": "main",
     "openjourney": "main",
@@ -128,16 +128,18 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
             return (x / 2 + 0.5).clamp(0, 1)
 
     vae = BaseVaeModel()
+    use_fp16 = False
     if args.variant == "stablediffusion":
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda()
-                    for inputs in model_input[args.version]["vae"]
-                ]
-            )
-        else:
+            use_fp16 = True
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda()
+        #             for inputs in model_input[args.version]["vae"]
+        #         ]
+        #     )
+        # else:
             inputs = model_input[args.version]["vae"]
     elif args.variant in [
         "anythingv3",
@@ -145,13 +147,15 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
         "openjourney",
         "dreamlike",
     ]:
+        inputs = model_input["v1_4"]["vae"]
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
-            )
-        else:
-            inputs = model_input["v1_4"]["vae"]
+            use_fp16 = True
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
+        #     )
+        # else:
+        #     inputs = model_input["v1_4"]["vae"]
     else:
         raise ValueError(f"{args.variant} not yet added")
 
@@ -160,6 +164,7 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
         inputs,
         model_name=model_name,
         extra_args=extra_args,
+        use_fp16=use_fp16
     )
     return shark_vae
 
@@ -184,17 +189,19 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
             return x.round()
 
     vae = VaeModel()
+    use_fp16 = False
     if args.variant == "stablediffusion":
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda()
-                    for inputs in model_input[args.version]["vae"]
-                ]
-            )
-        else:
-            inputs = model_input[args.version]["vae"]
+            use_fp16 = True
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda()
+        #             for inputs in model_input[args.version]["vae"]
+        #         ]
+        #     )
+        # else:
+        inputs = model_input[args.version]["vae"]
     elif args.variant in [
         "anythingv3",
         "analogdiffusion",
@@ -202,12 +209,13 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
         "dreamlike",
     ]:
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
-            )
-        else:
-            inputs = model_input["v1_4"]["vae"]
+            use_fp16 = True
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
+        #     )
+        # else:
+        inputs = model_input["v1_4"]["vae"]
     else:
         raise ValueError(f"{args.variant} not yet added")
 
@@ -216,6 +224,7 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
         inputs,
         model_name=model_name,
         extra_args=extra_args,
+        use_fp16=use_fp16
     )
     return shark_vae
 
@@ -247,17 +256,19 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
             return noise_pred
 
     unet = UnetModel()
+    use_fp16 = False
     if args.variant == "stablediffusion":
         if args.precision == "fp16":
-            unet = unet.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda() if len(inputs.shape) != 0 else inputs
-                    for inputs in model_input[args.version]["unet"]
-                ]
-            )
-        else:
-            inputs = model_input[args.version]["unet"]
+            use_fp16 = True
+        #     unet = unet.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda() if len(inputs.shape) != 0 else inputs
+        #             for inputs in model_input[args.version]["unet"]
+        #         ]
+        #     )
+        # else:
+        inputs = model_input[args.version]["unet"]
     elif args.variant in [
         "anythingv3",
         "analogdiffusion",
@@ -265,15 +276,16 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
         "dreamlike",
     ]:
         if args.precision == "fp16":
-            unet = unet.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda() if len(inputs.shape) != 0 else inputs
-                    for inputs in model_input["v1_4"]["unet"]
-                ]
-            )
-        else:
-            inputs = model_input["v1_4"]["unet"]
+            use_fp16 = True
+        #     unet = unet.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda() if len(inputs.shape) != 0 else inputs
+        #             for inputs in model_input["v1_4"]["unet"]
+        #         ]
+        #     )
+        # else:
+        inputs = model_input["v1_4"]["unet"]
     else:
         raise ValueError(f"{args.variant} is not yet added")
     shark_unet = compile_through_fx(
@@ -281,5 +293,6 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
         inputs,
         model_name=model_name,
         extra_args=extra_args,
+        use_fp16 = use_fp16
     )
     return shark_unet

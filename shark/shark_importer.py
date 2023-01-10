@@ -251,7 +251,7 @@ class SharkImporter:
 
 
 # Applies fx conversion to the model and imports the mlir.
-def import_with_fx(model, inputs, debug=False, model_name="model"):
+def import_with_fx(model, inputs, debug=False, model_name="model", use_fp16=False):
     import torch
     from torch.fx.experimental.proxy_tensor import make_fx
     from torch._decomp import get_decompositions
@@ -290,6 +290,10 @@ def import_with_fx(model, inputs, debug=False, model_name="model"):
         gm.recompile()
 
     strip_overloads(fx_g)
+    if use_fp16 == True:
+        fx_g.half()
+        fx_g = torch.jit.script(fx_g)
+        inputs = tuple([x.half() for x in inputs])
 
     mlir_importer = SharkImporter(
         fx_g,
