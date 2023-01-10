@@ -165,7 +165,7 @@ shark_tmp/
 *.vmfb
 .use-iree
 tank/dict_configs.py
-
+SD_MLIRS/
 # ORT related artefacts
 cache_models/
 onnx_models/
