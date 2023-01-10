@@ -8,11 +8,19 @@ from model_wrappers import (
 from resources import models_db
 from stable_args import args
 from utils import get_shark_model
+from datetime import date as date_module
 
 BATCH_SIZE = len(args.prompts)
 if BATCH_SIZE != 1:
     sys.exit("Only batch size 1 is supported.")
 
+def _get_mlir_model_name(model):
+    date = date_module.today().strftime("%dx%mx%Y")
+    version = args.version.replace('.', '-')
+    precision = args.precision if model != "clip" else "fp32"
+    prompt_max_len = f"prompt_len_{args.max_length}"
+    name = '_'.join([model, date, version, precision, prompt_max_len])
+    return name
 
 def get_params(bucket_key, model_key, model, is_tuned, precision):
     iree_flags = []
@@ -27,7 +35,10 @@ def get_params(bucket_key, model_key, model, is_tuned, precision):
 
     try:
         bucket = models_db[0][bucket_key]
-        model_name = models_db[1][model_key]
+        if args.import_mlir:
+            model_name = _get_mlir_model_name(model_key)
+        else:
+            model_name = models_db[1][model_key]
         iree_flags += models_db[2][model][is_tuned][precision][
             "default_compilation_flags"
         ]
@@ -68,6 +79,7 @@ def get_unet():
         bucket_key, model_key, "unet", is_tuned, args.precision
     )
     if not args.use_tuned and args.import_mlir:
+        model_name = _get_mlir_model_name("unet")
         return get_unet_mlir(model_name, iree_flags)
     return get_shark_model(bucket, model_name, iree_flags)
 
@@ -82,6 +94,7 @@ def get_vae():
         bucket_key, model_key, "vae", is_tuned, args.precision
     )
     if not args.use_tuned and args.import_mlir:
+        model_name = _get_mlir_model_name("vae")
         if args.use_base_vae:
             return get_base_vae_mlir(model_name, iree_flags)
         return get_vae_mlir(model_name, iree_flags)
@@ -95,5 +108,6 @@ def get_clip():
         bucket_key, model_key, "clip", "untuned", "fp32"
     )
     if args.import_mlir:
+        model_name = _get_mlir_model_name("clip")
         return get_clip_mlir(model_name, iree_flags)
     return get_shark_model(bucket, model_name, iree_flags)

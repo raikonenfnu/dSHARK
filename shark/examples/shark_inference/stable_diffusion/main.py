@@ -4,6 +4,7 @@ os.environ["AMD_ENABLE_LLPC"] = "1"
 
 from transformers import CLIPTextModel, CLIPTokenizer
 import torch
+torch.set_grad_enabled(False)
 from PIL import Image
 import torchvision.transforms as T
 from diffusers import (
