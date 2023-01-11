@@ -41,6 +41,7 @@ if args.clear_all:
 from utils import set_init_device_flags
 
 from opt_params import get_unet, get_vae, get_clip
+from model_wrappers import get_unet_torch
 from schedulers import (
     SharkEulerDiscreteScheduler,
 )
@@ -101,8 +102,10 @@ if __name__ == "__main__":
 
     set_init_device_flags()
     clip = get_clip()
-    unet = get_unet()
+    # unet = get_unet()
     vae = get_vae()
+    # unet = get_unet_torch()
+    unet = get_unet()
     if args.dump_isa:
         dump_isas(args.dispatch_benchmarks_dir)
 
@@ -206,11 +209,14 @@ if __name__ == "__main__":
             ),
             send_to_host=False,
         )
+        # with torch.no_grad():
+        #     noise_pred = unet.forward(torch.from_numpy(latent_model_input).cuda(), torch.from_numpy(timestep).cuda(), text_embeddings.cuda(), guidance_scale.cuda())
 
         end_profiling(profile_device)
 
         if cpu_scheduling:
             noise_pred = torch.from_numpy(noise_pred.to_host())
+            # noise_pred = noise_pred.to("cpu")
             latents = scheduler.step(noise_pred, t, latents).prev_sample
         else:
             latents = scheduler.step(noise_pred, t, latents)
@@ -228,6 +234,8 @@ if __name__ == "__main__":
         latents_numpy = latents.detach().numpy()
     profile_device = start_profiling(file_path="vae.rdc")
     vae_start = time.time()
+    # del unet
+    # torch.cuda.empty_cache()
     images = vae("forward", (latents_numpy,))
     vae_end = time.time()
     end_profiling(profile_device)

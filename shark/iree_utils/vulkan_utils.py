@@ -78,6 +78,8 @@ def get_vulkan_target_triple(device_name):
         triple = f"turing-rtx6000-{system_os}"
     elif all(x in device_name for x in ("RTX", "8000")):
         triple = f"turing-rtx8000-{system_os}"
+    elif all(x in device_name for x in ("Tesla", "T4")):
+        triple = f"turing-t4-{system_os}"
     elif all(x in device_name for x in ("TITAN", "RTX")):
         triple = f"turing-titanrtx-{system_os}"
     elif all(x in device_name for x in ("GTX", "1060")):

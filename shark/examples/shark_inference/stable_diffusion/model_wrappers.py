@@ -60,7 +60,7 @@ model_input = {
 
 # revision param for from_pretrained defaults to "main" => fp32
 model_revision = {
-    "stablediffusion": "fp16" if args.precision == "fp16" else "main",
+    "stablediffusion": "main",
     "anythingv3": "diffusers",
     "analogdiffusion": "main",
     "openjourney": "main",
@@ -128,17 +128,20 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
             return (x / 2 + 0.5).clamp(0, 1)
 
     vae = BaseVaeModel()
+    is_f16=False
     if args.variant == "stablediffusion":
+        inputs = model_input[args.version]["vae"]
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda()
-                    for inputs in model_input[args.version]["vae"]
-                ]
-            )
-        else:
-            inputs = model_input[args.version]["vae"]
+            is_f16 = True
+            f16_input_mask = [True for x in model_input[args.version]["vae"]]
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda()
+        #             for inputs in model_input[args.version]["vae"]
+        #         ]
+        #     )
+        # else:
     elif args.variant in [
         "anythingv3",
         "analogdiffusion",
@@ -146,12 +149,14 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
         "dreamlike",
     ]:
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
-            )
-        else:
-            inputs = model_input["v1_4"]["vae"]
+            is_f16 = True
+            f16_input_mask = [True for x in model_input["v1_4"]["vae"]]
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
+        #     )
+        # else:
+        inputs = model_input["v1_4"]["vae"]
     else:
         raise ValueError(f"{args.variant} not yet added")
 
@@ -160,6 +165,8 @@ def get_base_vae_mlir(model_name="vae", extra_args=[]):
         inputs,
         model_name=model_name,
         extra_args=extra_args,
+        is_f16=is_f16,
+        f16_input_mask=f16_input_mask
     )
     return shark_vae
 
@@ -186,15 +193,17 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
     vae = VaeModel()
     if args.variant == "stablediffusion":
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda()
-                    for inputs in model_input[args.version]["vae"]
-                ]
-            )
-        else:
-            inputs = model_input[args.version]["vae"]
+            is_f16 = True
+            f16_input_mask = [True for x in model_input[args.version]["vae"]]
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda()
+        #             for inputs in model_input[args.version]["vae"]
+        #         ]
+        #     )
+        # else:
+        inputs = model_input[args.version]["vae"]
     elif args.variant in [
         "anythingv3",
         "analogdiffusion",
@@ -202,12 +211,14 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
         "dreamlike",
     ]:
         if args.precision == "fp16":
-            vae = vae.half().cuda()
-            inputs = tuple(
-                [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
-            )
-        else:
-            inputs = model_input["v1_4"]["vae"]
+            is_f16 = True
+            f16_input_mask = [True for x in model_input["v1_4"]["vae"]]
+        #     vae = vae.half().cuda()
+        #     inputs = tuple(
+        #         [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
+        #     )
+        # else:
+        inputs = model_input["v1_4"]["vae"]
     else:
         raise ValueError(f"{args.variant} not yet added")
 
@@ -216,9 +227,43 @@ def get_vae_mlir(model_name="vae", extra_args=[]):
         inputs,
         model_name=model_name,
         extra_args=extra_args,
+        is_f16=is_f16,
+        f16_input_mask=f16_input_mask
     )
     return shark_vae
 
+
+def get_unet_torch(model_name="unet", extra_args=[]):
+    class UnetModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.unet = UNet2DConditionModel.from_pretrained(
+                model_config[args.version]
+                if args.variant == "stablediffusion"
+                else model_variant[args.variant],
+                subfolder="unet",
+                revision=model_revision[args.variant],
+            )
+            self.in_channels = self.unet.in_channels
+            self.train(False)
+
+        def forward(self, latent, timestep, text_embedding, guidance_scale):
+            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+            latents = torch.cat([latent] * 2)
+            unet_out = self.unet.forward(
+                latents, timestep, text_embedding, return_dict=False
+            )[0]
+            noise_pred_uncond, noise_pred_text = unet_out.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (
+                noise_pred_text - noise_pred_uncond
+            )
+            return noise_pred
+
+    unet = UnetModel()
+    if args.variant == "stablediffusion":
+        if args.precision == "fp16":
+            unet = unet.half().cuda()
+    return unet
 
 def get_unet_mlir(model_name="unet", extra_args=[]):
     class UnetModel(torch.nn.Module):
@@ -249,15 +294,17 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
     unet = UnetModel()
     if args.variant == "stablediffusion":
         if args.precision == "fp16":
-            unet = unet.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda() if len(inputs.shape) != 0 else inputs
-                    for inputs in model_input[args.version]["unet"]
-                ]
-            )
-        else:
-            inputs = model_input[args.version]["unet"]
+            is_f16 = True
+            f16_input_mask = [True if len(x.shape) != 0 else False for x in model_input[args.version]["unet"]]
+            # unet = unet.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda() if len(inputs.shape) != 0 else inputs
+        #             for inputs in model_input[args.version]["unet"]
+        #         ]
+        #     )
+        # else:
+        inputs = model_input[args.version]["unet"]
     elif args.variant in [
         "anythingv3",
         "analogdiffusion",
@@ -265,15 +312,17 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
         "dreamlike",
     ]:
         if args.precision == "fp16":
-            unet = unet.half().cuda()
-            inputs = tuple(
-                [
-                    inputs.half().cuda() if len(inputs.shape) != 0 else inputs
-                    for inputs in model_input["v1_4"]["unet"]
-                ]
-            )
-        else:
-            inputs = model_input["v1_4"]["unet"]
+            is_f16 = True
+            f16_input_mask = [True if len(x.shape) != 0 else False for x in model_input["v1_4"]["unet"]]
+        #     unet = unet.half().cuda()
+        #     inputs = tuple(
+        #         [
+        #             inputs.half().cuda() if len(inputs.shape) != 0 else inputs
+        #             for inputs in model_input["v1_4"]["unet"]
+        #         ]
+        #     )
+        # else:
+        inputs = model_input["v1_4"]["unet"]
     else:
         raise ValueError(f"{args.variant} is not yet added")
     shark_unet = compile_through_fx(
@@ -281,5 +330,7 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
         inputs,
         model_name=model_name,
         extra_args=extra_args,
+        is_f16=is_f16,
+        f16_input_mask=f16_input_mask
     )
     return shark_unet
