@@ -17,6 +17,7 @@ def _compile_module(shark_module, model_name, extra_args=[]):
             else "-".join(args.device.split("://"))
         )
         extended_name = "{}_{}".format(model_name, device)
+        print("ext name", extended_name)
         vmfb_path = os.path.join(os.getcwd(), extended_name + ".vmfb")
         if args.load_vmfb and os.path.isfile(vmfb_path) and not args.save_vmfb:
             print(f"loading existing vmfb from: {vmfb_path}")

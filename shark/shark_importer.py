@@ -290,7 +290,8 @@ def import_with_fx(model, inputs, debug=False, model_name="model"):
         gm.recompile()
 
     strip_overloads(fx_g)
-
+    # print("mlir import type:",type(inputs))
+    # print("mlir input:",inputs)
     mlir_importer = SharkImporter(
         fx_g,
         inputs,
@@ -304,3 +305,49 @@ def import_with_fx(model, inputs, debug=False, model_name="model"):
     mlir_module, func_name = mlir_importer.import_mlir()
 
     return mlir_module, func_name
+
+# Applies fx conversion to the model and imports the mlir.
+def script_with_fx(model, inputs, debug=False, model_name="model"):
+    import torch
+    from torch.fx.experimental.proxy_tensor import make_fx
+    from torch._decomp import get_decompositions
+
+    # TODO: Control the decompositions.
+    fx_g = make_fx(
+        model,
+        decomposition_table=get_decompositions(
+            [
+                torch.ops.aten.embedding_dense_backward,
+                torch.ops.aten.native_layer_norm_backward,
+                torch.ops.aten.slice_backward,
+                torch.ops.aten.select_backward,
+                torch.ops.aten.norm.ScalarOpt_dim,
+                torch.ops.aten.native_group_norm,
+                torch.ops.aten.upsample_bilinear2d.vec,
+                torch.ops.aten.split.Tensor,
+                torch.ops.aten.split_with_sizes,
+                torch.ops.aten.native_layer_norm,
+            ]
+        ),
+    )(*inputs)
+
+    fx_g.graph.set_codegen(torch.fx.graph.CodeGen())
+    fx_g.recompile()
+
+    def strip_overloads(gm):
+        """
+        Modifies the target of graph nodes in :attr:`gm` to strip overloads.
+        Args:
+            gm(fx.GraphModule): The input Fx graph module to be modified
+        """
+        for node in gm.graph.nodes:
+            if isinstance(node.target, torch._ops.OpOverload):
+                node.target = node.target.overloadpacket
+        gm.recompile()
+
+    strip_overloads(fx_g)
+    scripted = torch.jit.trace_module(
+            fx_g,
+            {"forward" : inputs}
+        )
+    return scripted

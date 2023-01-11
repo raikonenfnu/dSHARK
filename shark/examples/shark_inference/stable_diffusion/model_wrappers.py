@@ -1,6 +1,7 @@
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTextModel
 from utils import compile_through_fx
+from shark.shark_importer import script_with_fx
 from stable_args import args
 import torch
 
@@ -283,3 +284,170 @@ def get_unet_mlir(model_name="unet", extra_args=[]):
         extra_args=extra_args,
     )
     return shark_unet
+
+def get_clip_ts(model_name="clip_text", original_torch=False, extra_args=[]):
+
+    text_encoder = CLIPTextModel.from_pretrained(
+        "openai/clip-vit-large-patch14"
+    )
+    if args.variant == "stablediffusion":
+        if args.version != "v1_4":
+            text_encoder = CLIPTextModel.from_pretrained(
+                model_config[args.version], subfolder="text_encoder"
+            )
+
+    elif args.variant in [
+        "anythingv3",
+        "analogdiffusion",
+        "openjourney",
+        "dreamlike",
+    ]:
+        text_encoder = CLIPTextModel.from_pretrained(
+            model_variant[args.variant],
+            subfolder="text_encoder",
+            revision=model_revision[args.variant],
+        )
+    else:
+        raise ValueError(f"{args.variant} not yet added")
+
+    class CLIPText(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.text_encoder = text_encoder
+
+        def forward(self, input):
+            return self.text_encoder(input)[0]
+
+    clip_model = CLIPText()
+    if original_torch == True:
+        return clip_model
+    script_clip = script_with_fx(
+        clip_model,
+        model_input[args.version]["clip"],
+        debug=True,
+        model_name=model_name
+    )
+    return script_clip
+
+def get_vae_ts(model_name="vae", original_torch=False, extra_args=[]):
+    class VaeModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.vae = AutoencoderKL.from_pretrained(
+                model_config[args.version]
+                if args.variant == "stablediffusion"
+                else model_variant[args.variant],
+                subfolder="vae",
+                revision=model_revision[args.variant],
+            )
+
+        def forward(self, input):
+            input = 1 / 0.18215 * input
+            x = self.vae.decode(input, return_dict=False)[0]
+            x = (x / 2 + 0.5).clamp(0, 1)
+            x = x * 255.0
+            return x.round()
+
+    vae = VaeModel()
+    if args.variant == "stablediffusion":
+        if args.precision == "fp16":
+            vae = vae.half().cuda()
+            inputs = tuple(
+                [
+                    inputs.half().cuda()
+                    for inputs in model_input[args.version]["vae"]
+                ]
+            )
+        else:
+            inputs = model_input[args.version]["vae"]
+    elif args.variant in [
+        "anythingv3",
+        "analogdiffusion",
+        "openjourney",
+        "dreamlike",
+    ]:
+        if args.precision == "fp16":
+            vae = vae.half().cuda()
+            inputs = tuple(
+                [inputs.half().cuda() for inputs in model_input["v1_4"]["vae"]]
+            )
+        else:
+            inputs = model_input["v1_4"]["vae"]
+    else:
+        raise ValueError(f"{args.variant} not yet added")
+
+    if original_torch == True:
+        return vae
+    script_vae = script_with_fx(
+        vae,
+        inputs,
+        debug=True,
+        model_name=model_name
+    )
+    return script_vae
+
+def get_unet_ts(model_name="unet", original_torch=False, extra_args=[]):
+    class UnetModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.unet = UNet2DConditionModel.from_pretrained(
+                model_config[args.version]
+                if args.variant == "stablediffusion"
+                else model_variant[args.variant],
+                subfolder="unet",
+                revision=model_revision[args.variant],
+            )
+            self.in_channels = self.unet.in_channels
+            self.train(False)
+
+        def forward(self, latent, timestep, text_embedding, guidance_scale):
+            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+            latents = torch.cat([latent] * 2)
+            unet_out = self.unet.forward(
+                latents, timestep, text_embedding, return_dict=False
+            )[0]
+            noise_pred_uncond, noise_pred_text = unet_out.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (
+                noise_pred_text - noise_pred_uncond
+            )
+            return noise_pred
+
+    unet = UnetModel()
+    if args.variant == "stablediffusion":
+        if args.precision == "fp16":
+            unet = unet.half().cuda()
+            inputs = tuple(
+                [
+                    inputs.half().cuda() if len(inputs.shape) != 0 else inputs
+                    for inputs in model_input[args.version]["unet"]
+                ]
+            )
+        else:
+            inputs = model_input[args.version]["unet"]
+    elif args.variant in [
+        "anythingv3",
+        "analogdiffusion",
+        "openjourney",
+        "dreamlike",
+    ]:
+        if args.precision == "fp16":
+            unet = unet.half().cuda()
+            inputs = tuple(
+                [
+                    inputs.half().cuda() if len(inputs.shape) != 0 else inputs
+                    for inputs in model_input["v1_4"]["unet"]
+                ]
+            )
+        else:
+            inputs = model_input["v1_4"]["unet"]
+    else:
+        raise ValueError(f"{args.variant} is not yet added")
+    if original_torch == True:
+        return unet
+    script_unet = script_with_fx(
+        unet,
+        inputs,
+        debug=True,
+        model_name=model_name
+    )
+    return script_unet

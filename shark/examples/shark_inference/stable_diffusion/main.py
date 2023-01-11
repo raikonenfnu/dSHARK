@@ -4,6 +4,7 @@ os.environ["AMD_ENABLE_LLPC"] = "1"
 
 from transformers import CLIPTextModel, CLIPTokenizer
 import torch
+torch.set_grad_enabled(False)
 from PIL import Image
 import torchvision.transforms as T
 from diffusers import (
@@ -41,6 +42,7 @@ if args.clear_all:
 from utils import set_init_device_flags
 
 from opt_params import get_unet, get_vae, get_clip
+from model_wrappers import get_unet_ts, get_vae_ts, get_clip_ts
 from schedulers import (
     SharkEulerDiscreteScheduler,
 )
@@ -100,9 +102,12 @@ if __name__ == "__main__":
         sys.exit("prompts and negative prompts must be of same length")
 
     set_init_device_flags()
-    clip = get_clip()
-    unet = get_unet()
-    vae = get_vae()
+    unet = get_unet_ts(original_torch=False)
+    # unet = get_unet()
+    # clip = get_clip()
+    # unet = get_unet()
+    clip = get_clip_ts(original_torch=False)
+    vae = get_vae_ts(original_torch=False)
     if args.dump_isa:
         dump_isas(args.dispatch_benchmarks_dir)
 
@@ -150,9 +155,9 @@ if __name__ == "__main__":
     if args.warmup_count >= 1:
         vae_warmup_input = torch.clone(latents).detach().numpy()
         clip_warmup_input = torch.randint(1, 2, (2, args.max_length))
-    for i in range(args.warmup_count):
-        vae("forward", (vae_warmup_input,))
-        clip("forward", (clip_warmup_input,))
+    # for i in range(args.warmup_count):
+    #     vae("forward", (vae_warmup_input,))
+    #     clip("forward", (clip_warmup_input,))
 
     start = time.time()
 
@@ -174,7 +179,8 @@ if __name__ == "__main__":
     text_input = torch.cat([uncond_input.input_ids, text_input.input_ids])
 
     clip_inf_start = time.time()
-    text_embeddings = clip("forward", (text_input,))
+    # text_embeddings = clip("forward", (text_input,))
+    text_embeddings = clip.forward(text_input).detach().numpy()
     clip_inf_end = time.time()
     text_embeddings = torch.from_numpy(text_embeddings).to(dtype)
     text_embeddings_numpy = text_embeddings.detach().numpy()
@@ -196,21 +202,24 @@ if __name__ == "__main__":
 
         profile_device = start_profiling(file_path="unet.rdc")
 
-        noise_pred = unet(
-            "forward",
-            (
-                latent_model_input,
-                timestep,
-                text_embeddings_numpy,
-                guidance_scale,
-            ),
-            send_to_host=False,
-        )
+        with torch.no_grad():
+            noise_pred = unet.forward(torch.from_numpy(latent_model_input).cuda(), torch.from_numpy(timestep).cuda(), text_embeddings.cuda(), guidance_scale.cuda())
+        # noise_pred = unet(
+        #     "forward",
+        #     (
+        #         latent_model_input,
+        #         timestep,
+        #         text_embeddings_numpy,
+        #         guidance_scale,
+        #     ),
+        #     send_to_host=False,
+        # )
 
         end_profiling(profile_device)
 
         if cpu_scheduling:
-            noise_pred = torch.from_numpy(noise_pred.to_host())
+            # noise_pred = torch.from_numpy(noise_pred.to_host())
+            noise_pred = noise_pred.to("cpu")
             latents = scheduler.step(noise_pred, t, latents).prev_sample
         else:
             latents = scheduler.step(noise_pred, t, latents)
@@ -228,7 +237,8 @@ if __name__ == "__main__":
         latents_numpy = latents.detach().numpy()
     profile_device = start_profiling(file_path="vae.rdc")
     vae_start = time.time()
-    images = vae("forward", (latents_numpy,))
+    # images = vae("forward", (latents_numpy,))
+    images = vae.forward(latents.cuda()).cpu().detach().numpy()
     vae_end = time.time()
     end_profiling(profile_device)
     if args.use_base_vae:

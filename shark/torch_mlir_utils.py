@@ -65,7 +65,6 @@ def get_torch_mlir_module(
         ignore_traced_shapes = True
 
     tempfile.tempdir = shark_args.repro_dir
-
     mlir_module = torch_mlir.compile(
         module,
         input,
