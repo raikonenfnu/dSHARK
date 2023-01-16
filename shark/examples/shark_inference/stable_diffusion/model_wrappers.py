@@ -25,15 +25,17 @@ model_variant = {
     "analogdiffusion": "wavymulder/Analog-Diffusion",
 }
 
+import numpy as np
+unet_input = np.load("unet_input.npz", allow_pickle = True)
 model_input = {
     "v2_1": {
         "clip": (torch.randint(1, 2, (2, model_clip_max_length)),),
         "vae": (torch.randn(1, 4, 96, 96),),
         "unet": (
-            torch.randn(1, 4, 96, 96),  # latents
-            torch.tensor([1]).to(torch.float32),  # timestep
-            torch.randn(2, model_clip_max_length, 1024),  # embedding
-            torch.tensor(1).to(torch.float32),  # guidance_scale
+            torch.from_numpy(unet_input["latent_model_input"]).float(),  # latents
+            torch.from_numpy(unet_input["timestep"]).float(),  # timestep
+            torch.from_numpy(unet_input["text_embeddings_numpy"]).float(),  # embedding
+            torch.from_numpy(unet_input["guidance_scale"]),  # guidance_scale
         ),
     },
     "v2_1base": {
@@ -260,9 +262,9 @@ def get_unet_torch(model_name="unet", extra_args=[]):
             return noise_pred
 
     unet = UnetModel()
-    if args.variant == "stablediffusion":
-        if args.precision == "fp16":
-            unet = unet.half().cuda()
+    # if args.variant == "stablediffusion":
+    #     if args.precision == "fp16":
+    #         unet = unet.half().cuda()
     return unet
 
 def get_unet_mlir(model_name="unet", extra_args=[]):

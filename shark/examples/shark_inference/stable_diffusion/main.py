@@ -198,7 +198,6 @@ if __name__ == "__main__":
             latent_model_input = latent_model_input.detach().numpy()
 
         profile_device = start_profiling(file_path="unet.rdc")
-
         noise_pred = unet(
             "forward",
             (
