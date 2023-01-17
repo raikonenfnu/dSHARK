@@ -49,8 +49,19 @@ import time
 import sys
 from shark.iree_utils.compile_utils import dump_isas
 
-def convert_op_to_float(node):
-    print("type:", type(node))
+def convert_baddbmm_softmax_to_float(node):
+    # Looks for baddbmm + softmax, and convert them to fp32.
+    # Then cast result of softmax to fp16 again.
+    # Takes in bmmfp32, and returns true if success.
+    if args.version != "v2_1" or node.target != torch.ops.aten.baddbmm:
+        return None
+    softmax_node = list(node.users.keys())[0]
+    if not softmax_node.name.startswith("_softmax"):
+        return None
+    try:
+        node.args[0].args[0].args[0] == [10, 9216, 9216]
+    except:
+        return None
     casted_args = []
     with node.graph.inserting_before(node):
         for idx, arg in enumerate(node.args):
@@ -61,7 +72,6 @@ def convert_op_to_float(node):
                                 )
             casted_args.append(casted_arg)
     node.args = casted_args
-    softmax_node = list(node.users.keys())[0]
     with node.graph.inserting_after(softmax_node):
         casted_result = node.graph.call_function(
                                     torch.ops.prims.convert_element_type,
@@ -70,7 +80,7 @@ def convert_op_to_float(node):
                                 )
         softmax_node.replace_all_uses_with(casted_result)
         casted_result.args = (softmax_node, torch.float16)
-        return casted_result
+    return True
 
 def transform_fx(fx_g):
 
@@ -117,8 +127,9 @@ def transform_fx(fx_g):
                     node.append(new_node)
                     node.replace_all_uses_with(new_node)
                     new_node.args = (node,)
-            if str(node) == "baddbmm_28":
-                new_output_node = convert_op_to_float(node)
+            convert_baddbmm_softmax_to_float(node)
+            # if node.target == torch.ops.aten.baddbmm:
+                # new_output_node = convert_baddbmm_softmax_to_float(node)
                 # new_output_node = node
         # if node.op == "output":
         #     node.args[0].replace_all_uses_with(new_output_node)
@@ -234,7 +245,7 @@ if __name__ == "__main__":
     # if args.precision == "fp16":
     #     unet_torch = unet_torch.cuda().half().cuda()
     # original_noise_pred = unet_torch.forward(torch.from_numpy(unet_input["latent_model_input"]).cuda(), torch.from_numpy(unet_input["timestep"]).cuda(), torch.from_numpy(unet_input["text_embeddings_numpy"]).cuda(), torch.from_numpy(unet_input["guidance_scale"]).cuda())
-    # print(original_noise_pred)
+    # print("torch:", original_noise_pred)
     # noise_pred = unet(
     #     "forward",
     #     (

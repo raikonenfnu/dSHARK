@@ -261,6 +261,39 @@ def get_f16_inputs(inputs, is_f16, f16_input_mask):
 
     return tuple(f16_masked_inputs)
 
+def convert_baddbmm_softmax_to_float(node):
+    import torch
+    # Looks for baddbmm + softmax, and convert them to fp32.
+    # Then cast result of softmax to fp16 again.
+    # Takes in bmmfp32, and returns true if success.
+    if node.target != torch.ops.aten.baddbmm:
+        return None
+    softmax_node = list(node.users.keys())[0]
+    if not softmax_node.name.startswith("_softmax"):
+        return None
+    try:
+        node.args[0].args[0].args[0] == [10, 9216, 9216]
+    except:
+        return None
+    casted_args = []
+    with node.graph.inserting_before(node):
+        for idx, arg in enumerate(node.args):
+            casted_arg = node.graph.call_function(
+                                    torch.ops.prims.convert_element_type,
+                                    args=(arg, torch.float32),
+                                    kwargs={},
+                                )
+            casted_args.append(casted_arg)
+    node.args = casted_args
+    with node.graph.inserting_after(softmax_node):
+        casted_result = node.graph.call_function(
+                                    torch.ops.prims.convert_element_type,
+                                    args=(softmax_node, torch.float16),
+                                    kwargs={},
+                                )
+        softmax_node.replace_all_uses_with(casted_result)
+        casted_result.args = (softmax_node, torch.float16)
+    return True
 
 def transform_fx(fx_g):
     import torch
@@ -307,6 +340,7 @@ def transform_fx(fx_g):
                     node.append(new_node)
                     node.replace_all_uses_with(new_node)
                     new_node.args = (node,)
+            convert_baddbmm_softmax_to_float(node)
 
     fx_g.graph.lint()
 
