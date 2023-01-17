@@ -49,19 +49,28 @@ import time
 import sys
 from shark.iree_utils.compile_utils import dump_isas
 
-def gpu_transform_fx(fx_g):
-    kwargs_dict = {
-        "dtpye": torch.float32,
-        "device": torch.device(type="cuda"),
-        "pin_memory": False
-    }
-    for node in fx_g.graph.nodes:
-        if node.kwargs["device"] == torch.device(type="cpu"):
-            node.kwargs["device"] = torch.device(type="gpu")
-        # if node.op == "call_function":
-        #     if node.target in [torch.ops.aten.arange, torch.ops.aten.empty]:
-        #         node.kwargs = kwargs_dict
-    fx_g.graph.lint()
+def convert_op_to_float(node):
+    print("type:", type(node))
+    casted_args = []
+    with node.graph.inserting_before(node):
+        for idx, arg in enumerate(node.args):
+            casted_arg = node.graph.call_function(
+                                    torch.ops.prims.convert_element_type,
+                                    args=(arg, torch.float32),
+                                    kwargs={},
+                                )
+            casted_args.append(casted_arg)
+    node.args = casted_args
+    softmax_node = list(node.users.keys())[0]
+    with node.graph.inserting_after(softmax_node):
+        casted_result = node.graph.call_function(
+                                    torch.ops.prims.convert_element_type,
+                                    args=(softmax_node, torch.float16),
+                                    kwargs={},
+                                )
+        softmax_node.replace_all_uses_with(casted_result)
+        casted_result.args = (softmax_node, torch.float16)
+        return casted_result
 
 def transform_fx(fx_g):
 
@@ -70,6 +79,7 @@ def transform_fx(fx_g):
         "device": torch.device(type="cuda"),
         "pin_memory": False,
     }
+    new_output_node = None
     for node in fx_g.graph.nodes:
         if node.op == "call_function":
             if node.target in [
@@ -107,10 +117,14 @@ def transform_fx(fx_g):
                     node.append(new_node)
                     node.replace_all_uses_with(new_node)
                     new_node.args = (node,)
+            if str(node) == "baddbmm_28":
+                new_output_node = convert_op_to_float(node)
+                # new_output_node = node
         # if node.op == "output":
-        #     import pdb; pdb.set_trace()
+        #     node.args[0].replace_all_uses_with(new_output_node)
 
     fx_g.graph.lint()
+    # fx_g.graph.eliminate_dead_code()
 
 def compile_fx(
     model, inputs, is_f16=False, f16_input_mask=None, debug=False
@@ -235,4 +249,7 @@ if __name__ == "__main__":
     # TODO: Validate that it's only faulty on v2_1 and v2_1 base still works.
     # TODO: Modify to output the bmm and it's args and compare with IREE results.
     print(noise_pred)
+    print(noise_pred.shape)
+    print("any nan:", torch.isnan(noise_pred).any())
+    print("any inf:", torch.isinf(noise_pred).any())
 
