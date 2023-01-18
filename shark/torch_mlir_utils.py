@@ -66,6 +66,7 @@ def get_torch_mlir_module(
 
     tempfile.tempdir = shark_args.repro_dir
 
+    print("torch_mlir.compile")
     mlir_module = torch_mlir.compile(
         module,
         input,

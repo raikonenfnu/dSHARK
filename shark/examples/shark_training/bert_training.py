@@ -43,6 +43,6 @@ def forward(params, buffers, args):
 
 
 shark_module = SharkTrainer(mod, inp)
-shark_module.compile(forward)
+shark_module.compile(training_fn=forward)
 
 print(shark_module.train())

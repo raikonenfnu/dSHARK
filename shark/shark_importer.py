@@ -70,7 +70,7 @@ class SharkImporter:
 
     def _torch_mlir(self, is_dynamic, tracing_required):
         from shark.torch_mlir_utils import get_torch_mlir_module
-
+        print("torch_mlir_Module")
         return get_torch_mlir_module(
             self.module, self.inputs, is_dynamic, tracing_required
         )
@@ -356,6 +356,7 @@ def import_with_fx(
     from torch._decomp import get_decompositions
 
     # TODO: Control the decompositions.
+    print("making fx")
     fx_g = make_fx(
         model,
         decomposition_table=get_decompositions(
@@ -376,6 +377,7 @@ def import_with_fx(
 
 
     fx_g.graph.set_codegen(torch.fx.graph.CodeGen())
+    print("recompile")
     fx_g.recompile()
 
     def strip_overloads(gm):
@@ -396,21 +398,26 @@ def import_with_fx(
         transform_fx(fx_g)
         fx_g.recompile()
 
+    print("training graph change")
     if training:
         change_fx_graph_return_to_tuple(fx_g)
         inputs = flatten_training_input(inputs)
 
+    print("jit scripting")
     ts_graph = torch.jit.script(fx_g)
     inputs = get_f16_inputs(inputs, is_f16, f16_input_mask)
+    print("shark import init")
     mlir_importer = SharkImporter(
         ts_graph,
         inputs,
         frontend="torch",
     )
 
+    print("importing")
     if debug and not is_f16:
         (mlir_module, func_name), _, _ = mlir_importer.import_debug()
         return mlir_module, func_name
 
     mlir_module, func_name = mlir_importer.import_mlir()
+    print("done")
     return mlir_module, func_name

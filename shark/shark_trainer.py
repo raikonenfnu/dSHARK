@@ -71,6 +71,7 @@ class SharkTrainer:
     def compile(self, training_fn=None, extra_args=[]):
         if self.frontend in ["torch", "pytorch"]:
             packed_inputs = (dict(self.model.named_parameters()), dict(self.model.named_buffers()), tuple(self.input),)
+            print("compile fx")
             mlir_module, func_name = import_with_fx(
                 training_fn, packed_inputs, False, [], training=True
             )
@@ -81,6 +82,7 @@ class SharkTrainer:
             # # Returns the backward graph.
             # training_graph = aot_module.training_graph
             # weights = self.get_torch_params()
+            print("compile sharkrunner")
             self.shark_runner = SharkRunner(
                 mlir_module,
                 self.device,
@@ -117,7 +119,6 @@ class SharkTrainer:
             params = self.shark_runner.run("forward",
                 params + self.input, self.frontend
             )
-
         return params
 
     # Function to train tensorflow module.
