@@ -114,10 +114,12 @@ class SharkTrainer:
         params = [x.numpy() for x in params]
         print(f"Training started for {num_iters} iterations:")
         for i in tqdm(range(num_iters)):
-            params = self.shark_runner.run("forward",
+            results = self.shark_runner.run("forward",
                 params + self.input, self.frontend
             )
-
+            params = results[:-1]
+            loss = results[-1]
+            print("loss:", loss)
         return params
 
     # Function to train tensorflow module.
