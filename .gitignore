@@ -187,3 +187,6 @@ apps/stable_diffusion/web/models/
 
 # Stencil annotators.
 stencil_annotator/
+
+#MLIR artefacts
+linalg_gen*.mlir
