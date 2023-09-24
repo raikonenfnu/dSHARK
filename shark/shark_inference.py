@@ -207,6 +207,7 @@ class SharkInference:
 
     # load and return the module.
     def load_module(self, path, extra_args=[]):
+        self.device = "vulkan://7a673aa9-90f3-0b9d-556d-fb9c1cdfcb08"
         self.shark_runner = SharkRunner(
             device=self.device,
             compile_vmfb=False,

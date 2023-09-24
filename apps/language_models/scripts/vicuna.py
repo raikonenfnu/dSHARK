@@ -1460,7 +1460,7 @@ class UnshardedVicuna(VicunaBase):
                     self.hf_auth_token,
                 )
                 print(f"[DEBUG] generating torchscript graph")
-                is_f16 = self.precision in ["fp16", "int4"]
+                is_f16 = self.precision in ["fp16", "int4", "int8"]
                 ts_graph = import_with_fx(
                     model,
                     firstVicunaCompileInput,
@@ -1569,7 +1569,7 @@ class UnshardedVicuna(VicunaBase):
                         self.hf_auth_token,
                     )
                 print(f"[DEBUG] generating torchscript graph")
-                is_f16 = self.precision in ["fp16", "int4"]
+                is_f16 = self.precision in ["fp16", "int4", "int8"]
                 ts_graph = import_with_fx(
                     model,
                     secondVicunaCompileInput,
@@ -1579,7 +1579,7 @@ class UnshardedVicuna(VicunaBase):
                     mlir_type="torchscript",
                 )
                 del model
-                if self.precision in ["fp16", "int4"]:
+                if self.precision in ["fp16", "int4", "int8"]:
                     secondVicunaCompileInput = get_f16_inputs(
                         secondVicunaCompileInput,
                         True,

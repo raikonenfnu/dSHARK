@@ -122,9 +122,10 @@ def get_vulkan_target_triple(device_name):
     # Adreno Targets
     elif all(x in device_name for x in ("Adreno", "740")):
         triple = f"adreno-a740-{system_os}"
-
     else:
         triple = None
+    # triple = f"adreno-a740-{system_os}"
+    triple = f"rdna2-unknown-{system_os}"
     return triple
 
 
@@ -168,10 +169,13 @@ def get_iree_vulkan_args(device_num=0, extra_args=[]):
         vulkan_triple_flag = get_vulkan_triple_flag(
             device_num=device_num, extra_args=extra_args
         )
-
-    if vulkan_triple_flag is not None:
-        vulkan_target_env = get_vulkan_target_env_flag(vulkan_triple_flag)
-        res_vulkan_flag.append(vulkan_target_env)
+    # print("FLAGZZZZZZZZZZ: ", res_vulkan_flag)
+    # if vulkan_triple_flag is not None:
+        # vulkan_target_env = get_vulkan_target_env_flag(vulkan_triple_flag)
+        # res_vulkan_flag.append(vulkan_target_env)
+    # print("triplezzz: ", vulkan_triple_flag)
+    res_vulkan_flag.append(vulkan_triple_flag)
+    print("FLAGZZZZZZZZZZ: ", res_vulkan_flag)
     return res_vulkan_flag
 
 
